@@ -1,6 +1,4 @@
-# .github/workflows/build.yml
-name: Build and Push frps to GHCR
-
+name: Build and Push FRPS to GHCR
 on:
   push:
     branches: [ main ]
@@ -10,44 +8,40 @@ permissions:
   contents: read
   packages: write
 
-env:
-  IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/frps
-
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Resolve latest frp version (follow redirect)
+      - name: Get repo info (lowercase)
+        id: repo
+        run: |
+          owner=$(echo "${GITHUB_REPOSITORY_OWNER}" | tr '[:upper:]' '[:lower:]')
+          repo=$(basename "${GITHUB_REPOSITORY}" | tr '[:upper:]' '[:lower:]')
+          echo "owner=${owner}" >> $GITHUB_OUTPUT
+          echo "repo=${repo}" >> $GITHUB_OUTPUT
+
+      - name: Resolve latest frp version
         id: latest
         run: |
-          set -e
-          URL=$(curl -fsSLI -o /dev/null -w '%{url_effective}' https://github.com/fatedier/frp/releases/latest)
-          # URL 形如 .../tag/v0.65.0
-          TAG="${URL##*/}"                  # v0.65.0
-          VER="${TAG#v}"                    # 0.65.0
-          echo "tag=${TAG}" >> $GITHUB_OUTPUT
-          echo "ver=${VER}" >> $GITHUB_OUTPUT
-          echo "Latest tag: ${TAG}, ver: ${VER}"
+          url=$(curl -fsSLI -o /dev/null -w '%{url_effective}' https://github.com/fatedier/frp/releases/latest)
+          tag="${url##*/}"         # v0.65.0
+          ver="${tag#v}"           # 0.65.0
+          echo "tag=${tag}" >> $GITHUB_OUTPUT
+          echo "ver=${ver}" >> $GITHUB_OUTPUT
+          echo "Latest tag: $tag"
 
       - name: Download frps (linux amd64)
         run: |
-          set -e
-          TAG="${{ steps.latest.outputs.tag }}"
-          VER="${{ steps.latest.outputs.ver }}"
-          TARBALL="frp_${VER}_linux_amd64.tar.gz"
-          DLURL="https://github.com/fatedier/frp/releases/download/${TAG}/${TARBALL}"
-          echo "Downloading ${DLURL}"
-          curl -fL --retry 5 -o "${TARBALL}" "${DLURL}"
-          tar -xzf "${TARBALL}"
-          # 解包目录名如 frp_0.65.0_linux_amd64
-          SRC_DIR="frp_${VER}_linux_amd64"
-          test -x "${SRC_DIR}/frps"
-          cp "${SRC_DIR}/frps" ./frps
+          tag=${{ steps.latest.outputs.tag }}
+          ver=${{ steps.latest.outputs.ver }}
+          tarball="frp_${ver}_linux_amd64.tar.gz"
+          dlurl="https://github.com/fatedier/frp/releases/download/${tag}/${tarball}"
+          curl -fL --retry 5 -o "${tarball}" "${dlurl}"
+          tar -xzf "${tarball}"
+          mv "frp_${ver}_linux_amd64/frps" ./frps
           chmod +x ./frps
-          echo "${TAG}" > .frp_tag
 
       - name: Log in to GHCR
         uses: docker/login-action@v3
@@ -56,16 +50,7 @@ jobs:
           username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract metadata (tags, labels)
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.IMAGE_NAME }}
-          tags: |
-            type=raw,value=latest
-            type=raw,value=${{ steps.latest.outputs.tag }}
-
-      - name: Set up Docker Buildx
+      - name: Set up Buildx
         uses: docker/setup-buildx-action@v3
 
       - name: Build and push
@@ -74,10 +59,6 @@ jobs:
           context: .
           push: true
           platforms: linux/amd64
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-
-      - name: Summary
-        run: |
-          echo "Pushed: ${{ env.IMAGE_NAME }}:${{ steps.latest.outputs.tag }}" >> $GITHUB_STEP_SUMMARY
-          echo "Pushed: ${{ env.IMAGE_NAME }}:latest" >> $GITHUB_STEP_SUMMARY
+          tags: |
+            ghcr.io/${{ steps.repo.outputs.owner }}/${{ steps.repo.outputs.repo }}:${{ steps.latest.outputs.tag }}
+            ghcr.io/${{ steps.repo.outputs.owner }}/${{ steps.repo.outputs.repo }}:latest
