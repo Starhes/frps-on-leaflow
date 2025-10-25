@@ -52,10 +52,10 @@ jobs:
         with:
           context: .
           push: true
-          # 镜像标签格式为 ghcr.io/<owner>/<repo_name>:<tag>
+          # 【关键修改】使用 lower() 函数将仓库名称转换为小写
           tags: |
-            ghcr.io/${{ github.repository }}:latest
-            ghcr.io/${{ github.repository }}:${{ env.FRP_VERSION }}
+            ghcr.io/${{ lower(github.repository) }}:latest
+            ghcr.io/${{ lower(github.repository) }}:${{ env.FRP_VERSION }}
           # 将获取到的版本号作为构建参数传递给 Dockerfile
           build-args: |
             FRP_VERSION=${{ env.FRP_VERSION }}
