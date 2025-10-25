@@ -1,0 +1,16 @@
+# 禁用密码认证
+PasswordAuthentication no
+
+# 启用公钥认证
+PubkeyAuthentication yes
+
+# 允许root用户通过SSH登录
+PermitRootLogin yes
+
+# 【关键修改】指定公钥文件的位置
+AuthorizedKeysFile /config/authorized_keys
+
+# 其他安全默认设置
+ChallengeResponseAuthentication no
+PrintMotd no
+UsePAM yes
