@@ -1,6 +1,6 @@
 # ===================
 # 阶段 1: 构建器
-# 用于下载和解压 frp
+# (此部分无变化)
 # ===================
 FROM alpine:latest AS builder
 
@@ -17,25 +17,23 @@ RUN FRP_VERSION_NO_V=${FRP_VERSION#v} && \
 # ===================
 FROM alpine:latest
 
-# 安装运行时依赖
-RUN apk add --no-cache openssh supervisor
-
 # 从 builder 阶段复制 frps 二进制文件
 COPY --from=builder /frp_*_linux_amd64/frps /usr/local/bin/frps
 
-# 创建统一的配置目录 /config
-RUN mkdir -p /config/ssl
+# 创建配置目录
+RUN mkdir -p /etc/frp
 
-# 配置SSH (生成主机密钥)
-RUN ssh-keygen -A
+# 复制配置文件模板和启动脚本
+COPY frps.ini /etc/frp/frps.ini
+COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 
-# 将所有配置文件复制到 /config 目录
-COPY supervisord.conf /config/
-COPY sshd_config /config/
-COPY frps.ini /config/
+# 给启动脚本执行权限
+RUN chmod +x /usr/local/bin/entrypoint.sh
 
 # 暴露端口
-EXPOSE 22 7000
+# 7000: frp通信端口
+# 80, 443: 可能的HTTP/HTTPS代理端口
+EXPOSE 7000 80 443
 
-# 启动supervisor，并指定配置文件在 /config 目录
-CMD ["/usr/bin/supervisord", "-c", "/config/supervisord.conf"]
+# 设置入口点为我们的启动脚本
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
