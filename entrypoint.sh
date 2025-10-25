@@ -1,54 +1,55 @@
-#!/bin/sh
+#!/usr/bin/env sh
+set -euo pipefail
 
-# 配置文件路径
-CONFIG_FILE="/etc/frp/frps.ini"
+TEMPLATE="/etc/frp/frps.ini.tmpl"
+CONF="/etc/frp/frps.ini"
 
-echo "--- Starting FRP Server Configuration ---"
+# 渲染配置（按需注释 vhost_*）
+# 允许端口范围（allow_ports）如果未设置则不写
+# 其余核心配置均来自环境变量
+{
+  echo "; generated at $(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+  echo "[common]"
+  echo "bind_addr = ${FRPS_BIND_ADDR:-0.0.0.0}"
+  echo "bind_port = ${FRPS_BIND_PORT:-7000}"
 
-# 1. 设置认证令牌
-if [ -n "$TOKEN" ]; then
-  echo "TOKEN is set. Updating frps.ini..."
-  sed -i "s/^token.*/token = $TOKEN/" "$CONFIG_FILE"
-else
-  echo "WARNING: TOKEN is not set. Using default value from frps.ini."
-fi
+  # 允许端口范围（供客户端映射的公网端口），可为空
+  if [ -n "${FRPS_ALLOW_PORTS:-}" ]; then
+    echo "allow_ports = ${FRPS_ALLOW_PORTS}"
+  fi
 
-# 2. 设置仪表盘用户名
-if [ -n "$DASHBOARD_USER" ]; then
-  echo "DASHBOARD_USER is set. Updating frps.ini..."
-  sed -i "s/^dashboard_user.*/dashboard_user = $DASHBOARD_USER/" "$CONFIG_FILE"
-else
-  echo "WARNING: DASHBOARD_USER is not set. Using default value from frps.ini."
-fi
+  # dashboard
+  echo "dashboard_addr = 0.0.0.0"
+  echo "dashboard_port = ${FRPS_DASHBOARD_PORT:-7500}"
+  if [ -n "${FRPS_DASHBOARD_USER:-}" ]; then
+    echo "dashboard_user = ${FRPS_DASHBOARD_USER}"
+  fi
+  if [ -n "${FRPS_DASHBOARD_PWD:-}" ]; then
+    echo "dashboard_pwd = ${FRPS_DASHBOARD_PWD}"
+  fi
 
-# 3. 设置仪表盘密码
-if [ -n "$DASHBOARD_PWD" ]; then
-  echo "DASHBOARD_PWD is set. Updating frps.ini..."
-  sed -i "s/^dashboard_pwd.*/dashboard_pwd = $DASHBOARD_PWD/" "$CONFIG_FILE"
-else
-  echo "WARNING: DASHBOARD_PWD is not set. Using default value from frps.ini."
-fi
+  # 身份验证 token
+  if [ -n "${FRPS_TOKEN:-}" ]; then
+    echo "token = ${FRPS_TOKEN}"
+  fi
 
-# 4. 设置 VHOST HTTP 端口
-if [ -n "$VHOST_HTTP_PORT" ]; then
-  echo "VHOST_HTTP_PORT is set. Enabling HTTP proxy on port $VHOST_HTTP_PORT..."
-  sed -i "s/^#vhost_http_port.*/vhost_http_port = $VHOST_HTTP_PORT/" "$CONFIG_FILE"
-else
-  echo "VHOST_HTTP_PORT is not set. HTTP proxy will remain disabled."
-fi
+  # vhost 端口（仅当提供变量时启用，否则注释掉）
+  if [ -n "${VHOST_HTTP_PORT:-}" ]; then
+    echo "vhost_http_port = ${VHOST_HTTP_PORT}"
+  else
+    echo "; vhost_http_port = 80"
+  fi
 
-# 5. 设置 VHOST HTTPS 端口
-if [ -n "$VHOST_HTTPS_PORT" ]; then
-  echo "VHOST_HTTPS_PORT is set. Enabling HTTPS proxy on port $VHOST_HTTPS_PORT..."
-  sed -i "s/^#vhost_https_port.*/vhost_https_port = $VHOST_HTTPS_PORT/" "$CONFIG_FILE"
-else
-  echo "VHOST_HTTPS_PORT is not set. HTTPS proxy will remain disabled."
-fi
+  if [ -n "${VHOST_HTTPS_PORT:-}" ]; then
+    echo "vhost_https_port = ${VHOST_HTTPS_PORT}"
+  else
+    echo "; vhost_https_port = 443"
+  fi
 
-echo "--- FRP Server Configuration Finished ---"
-echo "--- Final configuration ---"
-cat "$CONFIG_FILE"
-echo "--------------------------"
+  # 其他推荐设置（可按需开放）
+  echo "log_file = /var/log/frp/frps.log"
+  echo "log_level = info"
+  echo "log_max_days = 3"
+} > "$CONF"
 
-# 使用 exec 启动 frps
-exec /usr/local/bin/frps -c "$CONFIG_FILE"
+exec "$@"
